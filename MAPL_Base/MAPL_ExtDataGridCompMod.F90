@@ -68,6 +68,7 @@
 !  12Dec2009  da Silva  Design and first implementation.
 !
 !-------------------------------------------------------------------------
+  include 'mpif.h'
 
   integer                    :: Ext_Debug
   character(len=ESMF_MAXSTR) :: Ext_TilePath
@@ -2258,6 +2259,7 @@ CONTAINS
               enddo
 
               if (.not.lfound) then
+                 call MPI_Barrier(MPI_COMM_WORLD)
                  _ASSERT(.false., 'From ' // trim(item%file) // ' could not find file with extrapolation')
               end if
            else
