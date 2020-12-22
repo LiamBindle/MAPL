@@ -6,6 +6,7 @@ module ExtData_DriverGridCompMod
   use MAPL
   use MAPL_ExtDataGridCompMod, only : ExtData_SetServices => SetServices
   use MAPL_HistoryGridCompMod, only : Hist_SetServices => SetServices
+  use MAPL_Profiler
 
   implicit none
   private
@@ -30,6 +31,7 @@ module ExtData_DriverGridCompMod
      type(ESMF_State),    pointer :: imports(:) => null(), exports(:) => null()
      type(ESMF_VM) :: vm
      type(ESMF_Time), allocatable :: times(:)
+     type(MAPL_Communicators) :: mapl_comm
    contains
      procedure :: set_services
      procedure :: initialize
@@ -53,8 +55,9 @@ module ExtData_DriverGridCompMod
 
 contains
 
-  function new_ExtData_DriverGridComp(root_set_services, configFileName, name) result(cap)
+  function new_ExtData_DriverGridComp(root_set_services, mapl_comm, configFileName, name) result(cap)
     procedure() :: root_set_services
+    type (MAPL_Communicators) :: mapl_comm
     character(len=*), optional, intent(in) :: name
     character(len=*), optional, intent(in) :: configFileName
     type(ExtData_DriverGridComp) :: cap
@@ -63,7 +66,6 @@ contains
     type(MAPL_MetaComp_Wrapper) :: meta_comp_wrapper
 
     integer :: status, rc
-    character(len=ESMF_MAXSTR)   :: Iam="new_ExtData_DriverGridComp"
 
     cap%root_set_services => root_set_services
 
@@ -81,6 +83,7 @@ contains
 
     cap%gc = ESMF_GridCompCreate(name='ExtData_DriverGridComp', rc = status)
     _VERIFY(status)
+    cap%mapl_comm=mapl_comm
 
     allocate(cap_wrapper%ptr)
     cap_wrapper%ptr = cap
@@ -138,15 +141,16 @@ contains
     integer                      :: HEARTBEAT_DT
     character(len=ESMF_MAXSTR)   :: HIST_CF, ROOT_CF, EXTDATA_CF
 
-    character(len=ESMF_MAXSTR)   :: Iam="initialize_gc"
-
     type (MAPL_MetaComp), pointer :: MAPLOBJ
     procedure(), pointer :: root_set_services
     type(ExtData_DriverGridComp), pointer :: cap
+    class(BaseProfiler), pointer :: t_p
 
     _UNUSED_DUMMY(import_state)
     _UNUSED_DUMMY(export_state)
     _UNUSED_DUMMY(clock)
+
+    t_p => get_global_time_profiler()
 
     cap => get_CapGridComp_from_gc(gc)
     maplobj => get_MetaComp_from_gc(gc) 
@@ -176,7 +180,7 @@ contains
     !  CAP's MAPL MetaComp
     !---------------------
 
-    call MAPL_Set(MAPLOBJ, rc = status)
+    call MAPL_Set(MAPLOBJ, mapl_comm=cap%mapl_comm,rc = status)
     _VERIFY(STATUS)
 
     call MAPL_Set(MAPLOBJ, name = cap%name, cf = cap%config, rc = status)
@@ -436,7 +440,6 @@ contains
     integer, intent(out) :: RC     ! Error code:
 
     integer :: status
-    character(len=ESMF_MAXSTR)   :: Iam="MAPL_GridCompCap::run()"
 
     _UNUSED_DUMMY(import)
     _UNUSED_DUMMY(export)
@@ -456,7 +459,6 @@ contains
     integer, intent(out) :: rc
 
     integer :: status
-    character(len=ESMF_MAXSTR)   :: Iam = "CapGridComp_Finalize"
 
     type(ExtData_DriverGridComp), pointer :: cap
     type(MAPL_MetaComp), pointer :: MAPLOBJ
@@ -502,7 +504,6 @@ contains
     integer, intent(out) :: rc
 
     integer :: status
-    character(len=ESMF_MAXSTR)   :: Iam="set_services"
 
     call ESMF_GridCompSetEntryPoint(gc, ESMF_METHOD_INITIALIZE, userRoutine = initialize_gc, rc = status)
     _VERIFY(status)
@@ -518,7 +519,6 @@ contains
   subroutine set_services(this, rc)
     class(ExtData_DriverGridComp), intent(inout) :: this
     integer, optional, intent(out) :: rc
-    character(*), parameter :: Iam = "set_services"
     integer :: status
 
     call ESMF_GridCompSetServices(this%gc, set_services_gc, rc = status)
@@ -532,7 +532,6 @@ contains
     integer, optional, intent(out) :: rc
     
     integer :: status
-    character(len=ESMF_MAXSTR)   :: Iam="Initialize"
     
     call ESMF_GridCompInitialize(this%gc, userRc = status)
     _VERIFY(status)
@@ -546,7 +545,6 @@ contains
 
     integer :: status
     integer :: userRc
-    character(len=ESMF_MAXSTR)   :: Iam="run"
 
     call ESMF_GridCompRun(this%gc, userRC=userRC,rc=status)
     _ASSERT(userRC==ESMF_SUCCESS .and. STATUS==ESMF_SUCCESS,'run failed')
@@ -560,7 +558,6 @@ contains
     integer, optional, intent(out) :: rc
     
     integer :: status    
-    character(len=ESMF_MAXSTR)   :: Iam="finalize"
     
     call ESMF_GridCompFinalize(this%gc, rc = status)
     _VERIFY(status)
@@ -571,8 +568,6 @@ contains
   function get_am_i_root(this, rc) result (amiroot)
     class (ExtData_DriverGridComp) :: this
     integer, optional, intent(out) :: rc
-
-    character(len=ESMF_MAXSTR)   :: Iam="get_am_i_root"
 
     logical :: amiroot
 
@@ -608,7 +603,6 @@ contains
     integer, optional, intent(out) :: rc
     
     integer :: n, status
-    character(len=ESMF_MAXSTR) :: Iam="run_MultipleTimes"
 
     type(ExtData_DriverGridComp), pointer :: cap
     type (MAPL_MetaComp), pointer :: MAPLOBJ
@@ -640,7 +634,6 @@ contains
   subroutine run_one_step(this, rc)
     class(ExtData_DriverGridComp), intent(inout) :: this
     integer, intent(out) :: rc
-    character(*), parameter :: Iam = "run_one_step"
     integer :: AGCM_YY, AGCM_MM, AGCM_DD, AGCM_H, AGCM_M, AGCM_S
     integer :: status
 
@@ -716,7 +709,6 @@ contains
     character(ESMF_MAXSTR)   :: CALENDAR
     integer                  :: status
     integer        :: datetime(2)
-    character(ESMF_MAXSTR)   :: IAM="MAPL_ClockInit"
     type(ESMF_Calendar) :: cal
     type(ESMF_Time)          :: CurrTime
     type(ESMF_TimeInterval) :: timeInterval, duration
@@ -789,7 +781,6 @@ contains
   subroutine parseTimes(this, rc)
     class(ExtData_DriverGridComp), intent(inout) :: this
     integer, intent(out), optional :: rc
-    character(*), parameter :: Iam = "parseTimes"
     integer :: comp_YY, comp_MM, comp_DD, comp_H, comp_M, comp_S,columnCount,lineCount,i,ctime(2)
     integer :: status
 
@@ -817,7 +808,6 @@ contains
     class(ExtData_DriverGridComp), intent(inout) :: this
     type(ESMF_Time), intent(inout) :: time
     integer, intent(out), optional :: rc
-    character(*), parameter :: Iam = "advanceClockToTime"
     integer :: status
 
     type(ESMF_Time) :: currTime

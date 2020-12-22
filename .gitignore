@@ -1,2 +1,7 @@
 *~
-/@cmake
+/ESMA_cmake/
+/ESMA_env/
+/BUILD/
+/build*/
+/install*/
+/.mepo/
